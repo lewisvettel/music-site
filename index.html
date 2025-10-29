@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>清澈电台</title>
+  <!-- 外部资源 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            glow: '#7dd3fc',
+            glow2: '#c084fc',
+            glow3: '#93c5fd',
+          },
+          animation: {
+            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'float': 'float 6s ease-in-out infinite',
+            'glow-multi': 'glow-multi 4s ease-in-out infinite alternate',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
+            },
+            'glow-multi': {
+              '0%': { boxShadow: '0 0 10px rgba(125, 211, 252, 0.5), 0 0 20px rgba(192, 132, 252, 0.3)' },
+              '100%': { boxShadow: '0 0 20px rgba(192, 132, 252, 0.6), 0 0 40px rgba(147, 197, 253, 0.5)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- 自定义样式 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .glass {
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+      .glass-dark {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+    }
+  </style>
+  
+  <style>
+    body {
+      background-color: #f8fafc;
+      background-image: 
+        radial-gradient(circle at 20% 30%, rgba(125, 211, 252, 0.15) 0%, transparent 25%),
+        radial-gradient(circle at 80% 70%, rgba(192, 132, 252, 0.1) 0%, transparent 30%);
+      background-attachment: fixed;
+    }
+    
+    /* 音频可视化 */
+    .visualizer-bar { width: 3px; border-radius: 3px; transition: height 0.2s; }
+    
+    /* 歌词滚动 */
+    .lyrics-container { height: 120px; overflow: hidden; position: relative; }
+    .lyrics { position: absolute; width: 100%; transition: transform 0.5s; }
+    .lyric-line { opacity: 0.6; transition: all 0.5s; }
+    .lyric-line.active { opacity: 1; font-weight: 500; }
+  </style>
+</head>
+
+<body class="min-h-screen font-sans flex flex-col">
+  <!-- 背景装饰 -->
+  <div class="fixed top-20 left-10 w-96 h-96 rounded-full bg-glow/15 blur-3xl animate-pulse-slow"></div>
+  <div class="fixed bottom-20 right-10 w-80 h-80 rounded-full bg-glow2/15 blur-3xl animate-pulse-slow" style="animation-delay: 1s"></div>
+  
+  <!-- 管理员密码弹窗 -->
+  <div id="passwordModal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div class="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
+    <div class="glass rounded-2xl p-8 max-w-md w-full mx-4 relative z-10 shadow-xl animate-float">
+      <h3 class="text-xl font-semibold mb-6 text-center">管理员验证</h3>
+      <div class="mb-4">
+        <label class="block text-sm mb-1">请输入管理员密码</label>
+        <div class="relative">
+          <input type="password" id="adminPassword" class="w-full glass-dark px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-glow" placeholder="输入密码">
+          <button id="togglePassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-glow">
+            <i class="fa fa-eye-slash"></i>
+          </button>
+        </div>
+      </div>
+      <div class="text-red-500 text-sm mb-4 hidden" id="passwordError">密码错误</div>
+      <div class="flex gap-3">
+        <button id="cancelAuth" class="flex-1 glass-dark px-4 py-2 rounded-lg hover:bg-opacity-80">取消</button>
+        <button id="confirmAuth" class="flex-1 bg-gradient-to-r from-glow to-glow2 text-white px-4 py-2 rounded-lg hover:opacity-90">确认</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 导航栏 -->
+  <header class="glass sticky top-0 z-40 px-6 py-4 shadow-sm">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-r from-glow to-glow2 flex items-center justify-center">
+          <i class="fa fa-music text-white"></i>
+        </div>
+        <h1 class="text-2xl font-bold">清澈电台</h1>
+      </div>
+      <button id="uploadToggle" class="glass-dark px-4 py-2 rounded-full flex items-center gap-2">
+        <i class="fa fa-upload"></i>
+        <span>上传音乐</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主内容 -->
+  <main class="flex-grow container mx-auto px-6 py-12 relative">
+    <!-- 上传区域（默认隐藏） -->
+    <div id="uploadArea" class="glass rounded-2xl p-6 mb-10 hidden animate-float">
+      <h2 class="text-xl font-semibold mb-4 text-center">上传音乐和歌词</h2>
+      <div class="glass-dark rounded-xl p-8 text-center mb-6" id="fileDropArea">
+        <i class="fa fa-cloud-upload text-4xl text-glow mb-3"></i>
+        <p class="mb-2">拖放文件到此处，或点击选择文件</p>
+        <p class="text-xs text-gray-500">支持 MP3 和 LRC 格式</p>
+        <input type="file" id="fileInput" class="hidden" accept=".mp3,.lrc" multiple>
+        <button id="browseFiles" class="mt-4 glass px-4 py-2 rounded-full">选择文件</button>
+      </div>
+      <div id="uploadProgress" class="hidden">
+        <div class="w-full glass-dark rounded-full h-2 mb-2">
+          <div id="progressBar" class="bg-gradient-to-r from-glow to-glow2 h-2 rounded-full" style="width: 0%"></div>
+        </div>
+        <p class="text-sm text-center" id="progressText">准备上传...</p>
+      </div>
+    </div>
+    
+    <!-- 播放区域 -->
+    <div class="max-w-2xl mx-auto">
+      <!-- 专辑封面 -->
+      <div class="relative mb-10">
+        <div class="w-64 h-64 md:w-80 md:h-80 mx-auto rounded-full overflow-hidden glass animate-float shadow-lg animate-glow-multi">
+          <img src="https://picsum.photos/seed/radio/400/400" alt="专辑封面" class="w-full h-full object-cover">
+        </div>
+      </div>
+      
+      <!-- 歌曲信息 -->
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-bold mb-2" id="songTitle">未知歌曲</h2>
+        <p class="text-gray-600" id="songArtist">未知艺术家</p>
+      </div>
+      
+      <!-- 音频可视化 -->
+      <div class="flex justify-center gap-3 h-40 mb-8" id="visualizer"></div>
+      
+      <!-- 歌词区域 -->
+      <div class="glass rounded-xl p-6 mb-8 lyrics-container">
+        <div class="lyrics text-center" id="lyrics">
+          <div class="lyric-line py-1">上传歌曲后显示歌词</div>
+        </div>
+      </div>
+      
+      <!-- 进度条 -->
+      <div class="mb-6 px-2">
+        <div class="flex justify-between text-sm text-gray-600 mb-1">
+          <span id="currentTime">00:00</span>
+          <span id="totalTime">00:00</span>
+        </div>
+        <div class="relative h-2 glass-dark rounded-full cursor-pointer" id="progressContainer">
+          <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-glow to-glow2" id="progress" style="width: 0%"></div>
+          <div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow" id="progressHandle" style="left: 0%"></div>
+        </div>
+      </div>
+      
+      <!-- 控制按钮 -->
+      <div class="flex items-center justify-center gap-6 md:gap-10">
+        <button class="text-gray-600 hover:text-glow text-xl">
+          <i class="fa fa-step-backward"></i>
+        </button>
+        <button class="text-gray-600 hover:text-glow text-2xl">
+          <i class="fa fa-backward"></i>
+        </button>
+        <button class="w-14 h-14 rounded-full bg-gradient-to-r from-glow to-glow2 flex items-center justify-center text-white shadow-lg hover:scale-105 transition-all" id="playPauseBtn">
+          <i class="fa fa-play text-xl"></i>
+        </button>
+        <button class="text-gray-600 hover:text-glow text-2xl">
+          <i class="fa fa-forward"></i>
+        </button>
+        <button class="text-gray-600 hover:text-glow text-xl">
+          <i class="fa fa-step-forward"></i>
+        </button>
+      </div>
+      
+      <!-- 音量控制 -->
+      <div class="flex items-center justify-center gap-3 mt-8">
+        <i class="fa fa-volume-up text-gray-600"></i>
+        <div class="w-32 md:w-48 h-2 glass-dark rounded-full" id="volumeContainer">
+          <div class="absolute h-full bg-gradient-to-r from-glow to-glow2" id="volume" style="width: 80%"></div>
+        </div>
+        <i class="fa fa-volume-off text-gray-600"></i>
+      </div>
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="glass py-6 px-6 mt-12">
+    <div class="container mx-auto text-center text-gray-600 text-sm">
+      <p>清澈电台 &copy; 2023</p>
+    </div>
+  </footer>
+
+  <!-- 音频元素 -->
+  <audio id="audioPlayer" hidden></audio>
+
+  <!-- 交互逻辑 -->
+  <script>
+    // 替换为你的 Cloudflare Worker 域名（部署后填写）
+    const API_BASE_URL = "https://你的Worker域名.workers.dev";
+
+    // DOM元素
+    const passwordModal = document.getElementById('passwordModal');
+    const adminPassword = document.getElementById('adminPassword');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const progress = document.getElementById('progress');
+    const progressHandle = document.getElementById('progressHandle');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalTimeEl = document.getElementById('totalTime');
+    const volume = document.getElementById('volume');
+    const songTitle = document.getElementById('songTitle');
+    const lyrics = document.getElementById('lyrics');
+    const visualizer = document.getElementById('visualizer');
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+
+    // 全局变量
+    let isAuthenticated = false;
+    let authToken = '';
+    let audioContext;
+    let analyser;
+    let lyricsData = [];
+
+    // 初始化音频可视化
+    function initVisualizer() {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 64;
+        const source = audioContext.createMediaElementSource(audioPlayer);
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+        
+        // 创建频谱条
+        const barCount = analyser.frequencyBinCount;
+        for (let i = 0; i < barCount; i++) {
+          const bar = document.createElement('div');
+          bar.className = 'visualizer-bar bg-gradient-to-t from-glow to-glow2';
+          visualizer.appendChild(bar);
+        }
+        
+        // 动画更新
+        function update() {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const bars = visualizer.querySelectorAll('.visualizer-bar');
+          bars.forEach((bar, i) => {
+            bar.style.height = `${(dataArray[i]/255)*40}px`;
+          });
+          requestAnimationFrame(update);
+        }
+        update();
+      } catch (e) { console.log('可视化初始化失败:', e); }
+    }
+
+    // 格式化时间（秒 -> 分:秒）
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // 解析LRC歌词
+    function parseLrc(lrcText) {
+      const lines = lrcText.split('\n');
+      const result = [];
+      lines.forEach(line => {
+        const timeMatch = line.match(/\[(\d{2}):(\d{2}\.\d{2,3})\]/);
+        if (timeMatch) {
+          const time = parseFloat(timeMatch[1])*60 + parseFloat(timeMatch[2]);
+          const text = line.replace(/\[.*?\]/, '').trim();
+          if (text) result.push({ time, text });
+        }
+      });
+      return result.sort((a, b) => a.time - b.time);
+    }
+
+    // 更新歌词显示
+    function updateLyrics(currentTime) {
+      if (lyricsData.length === 0) return;
+      let activeIndex = -1;
+      lyricsData.forEach((line, i) => {
+        if (line.time <= currentTime) activeIndex = i;
+      });
+      
+      if (activeIndex !== -1) {
+        lyrics.innerHTML = '';
+        lyricsData.forEach((line, i) => {
+          const div = document.createElement('div');
+          div.className = `lyric-line py-1 ${i === activeIndex ? 'active' : ''}`;
+          div.textContent = line.text;
+          lyrics.appendChild(div);
+        });
+        // 滚动到当前歌词
+        const activeLine = lyrics.querySelector('.active');
+        if (activeLine) {
+          const scrollTop = activeLine.offsetTop - 60; // 居中显示
+          lyrics.style.transform = `translateY(-${scrollTop}px)`;
+        }
+      }
+    }
+
+    // 播放/暂停切换
+    function togglePlayPause() {
+      if (audioPlayer.paused) {
+        audioPlayer.play();
+        playPauseBtn.innerHTML = '<i class="fa fa-pause text-xl"></i>';
+        if (audioContext && audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
+      } else {
+        audioPlayer.pause();
+        playPauseBtn.innerHTML = '<i class="fa fa-play text-xl"></i>';
+      }
+    }
+
+    // 上传文件到GitHub
+    async function uploadFiles(files) {
+      if (!isAuthenticated) { alert('请先验证管理员密码'); return; }
+      
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append('files', file));
+      
+      document.getElementById('uploadProgress').classList.remove('hidden');
+      document.getElementById('progressBar').style.width = '0%';
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/upload`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` },
+          body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+          document.getElementById('progressBar').style.width = '100%';
+          document.getElementById('progressText').textContent = '上传成功，正在播放...';
+          
+          // 播放新上传的音频
+          audioPlayer.src = result.audioUrl;
+          songTitle.textContent = files[0].name.replace('.mp3', '');
+          
+          // 解析歌词（如果有）
+          const lrcFile = Array.from(files).find(f => f.name.endsWith('.lrc'));
+          if (lrcFile) {
+            const reader = new FileReader();
+            reader.onload = e => lyricsData = parseLrc(e.target.result);
+            reader.readAsText(lrcFile);
+          } else {
+            lyricsData = [];
+            lyrics.innerHTML = '<div class="lyric-line py-1 active">无歌词文件</div>';
+          }
+          
+          audioPlayer.play().then(() => {
+            playPauseBtn.innerHTML = '<i class="fa fa-pause text-xl"></i>';
+          });
+        } else {
+          throw new Error(result.error || '上传失败');
+        }
+      } catch (error) {
+        document.getElementById('progressText').textContent = `失败: ${error.message}`;
+      }
+    }
+
+    // 管理员密码验证
+    async function authenticate() {
+      const password = adminPassword.value.trim();
+      if (!password) return;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const result = await response.json();
+        
+        if (result.authenticated) {
+          isAuthenticated = true;
+          authToken = result.token;
+          passwordModal.classList.add('hidden');
+          uploadArea.classList.remove('hidden');
+        } else {
+          document.getElementById('passwordError').classList.remove('hidden');
+        }
+      } catch (error) {
+        document.getElementById('passwordError').textContent = '验证失败，请重试';
+        document.getElementById('passwordError').classList.remove('hidden');
+      }
+    }
+
+    // 绑定事件
+    function setupEvents() {
+      // 密码弹窗
+      document.getElementById('uploadToggle').addEventListener('click', () => {
+        if (!isAuthenticated) passwordModal.classList.remove('hidden');
+        else uploadArea.classList.toggle('hidden');
+      });
+      
+      document.getElementById('togglePassword').addEventListener('click', () => {
+        const type = adminPassword.type === 'password' ? 'text' : 'password';
+        adminPassword.type = type;
+        document.getElementById('togglePassword').innerHTML = 
+          type === 'password' ? '<i class="fa fa-eye-slash"></i>' : '<i class="fa fa-eye"></i>';
+      });
+      
+      document.getElementById('confirmAuth').addEventListener('click', authenticate);
+      document.getElementById('cancelAuth').addEventListener('click', () => {
+        passwordModal.classList.add('hidden');
+      });
+      
+      // 文件上传
+      document.getElementById('browseFiles').addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', e => {
+        if (e.target.files.length > 0) uploadFiles(e.target.files);
+      });
+      
+      // 拖放上传
+      const dropArea = document.getElementById('fileDropArea');
+      dropArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropArea.classList.add('bg-glow/10');
+      });
+      dropArea.addEventListener('dragleave', () => dropArea.classList.remove('bg-glow/10'));
+      dropArea.addEventListener('drop', e => {
+        e.preventDefault();
+        dropArea.classList.remove('bg-glow/10');
+        if (e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files);
+      });
+      
+      // 音频控制
+      playPauseBtn.addEventListener('click', togglePlayPause);
+      
+      audioPlayer.addEventListener('timeupdate', () => {
+        const percent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+        progress.style.width = `${percent}%`;
+        progressHandle.style.left = `${percent}%`;
+        currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+        updateLyrics(audioPlayer.currentTime);
+      });
+      
+      audioPlayer.addEventListener('loadedmetadata', () => {
+        totalTimeEl.textContent = formatTime(audioPlayer.duration);
+      });
+      
+      // 进度条点击
+      document.getElementById('progressContainer').addEventListener('click', e => {
+        const rect = e.target.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        audioPlayer.currentTime = pos * audioPlayer.duration;
+      });
+      
+      // 音量控制
+      document.getElementById('volumeContainer').addEventListener('click', e => {
+        const rect = e.target.getBoundingClientRect();
+        const vol = (e.clientX - rect.left) / rect.width;
+        audioPlayer.volume = vol;
+        volume.style.width = `${vol*100}%`;
+      });
+    }
+
+    // 初始化
+    window.addEventListener('DOMContentLoaded', () => {
+      setupEvents();
+      initVisualizer();
+    });
+  </script>
+</body>
+</html>
